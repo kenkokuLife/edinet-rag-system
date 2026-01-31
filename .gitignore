@@ -1,45 +1,42 @@
-# 依赖目录
+# 模型文件
+models/
+!models/*.py
+!models/*.md
+!models/*.txt
+!models/*.json
+
+# 数据文件
+data/
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.onnx_data
+*.npy
+*.npz
+
+# 依赖
 node_modules/
-
-# 环境变量文件
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# 日志文件
-*.log
-logs/
-
-# 运行时数据
-*.pid
-*.seed
-*.pid.lock
-
-# 缓存
-.cache/
-
-# 操作系统文件
 .DS_Store
-Thumbs.db
 
-# 编辑器文件
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# 测试覆盖率
-coverage/
-.nyc_output/
+# 日志
+*.log
+logs/
 
-# 构建产物
+# 其他
 dist/
 build/
-out/
-
-# 包管理器文件
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+*.pyc
+__pycache__/
