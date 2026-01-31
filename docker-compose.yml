@@ -1,0 +1,102 @@
+services:
+  # 主应用服务
+  rag-app:
+    build: .
+    container_name: edinet-rag-app
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8001
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    depends_on:
+      - chromadb
+      - ollama
+    networks:
+      - rag-network
+    restart: unless-stopped
+    command: >
+      sh -c "python -m app.main"
+
+  # 向量数据库
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: edinet-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - CHROMA_SERVER_AUTHN_PROVIDER=token
+      - CHROMA_SERVER_AUTHN_CREDENTIALS=test-token
+      - ALLOW_RESET=TRUE
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # 本地LLM服务
+  ollama:
+    image: ollama/ollama:latest
+    container_name: edinet-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # 新增: Streamlit前端
+  streamlit-frontend:
+    build: ./frontend-streamlit
+    container_name: edinet-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://rag-app:8000/api/v1
+    depends_on:
+      - rag-app
+    networks:
+      - rag-network
+    restart: unless-stopped
+  
+  # 新增: Vue.js前端
+  vue-frontend:
+    build: ./frontend-vue
+    container_name: edinet-vue
+    ports:
+      - "8080:80"
+    depends_on:
+      - rag-app
+    networks:
+      - rag-network
+    restart: unless-stopped
+  
+  # 新增: Redis缓存（可选）
+  redis:
+    image: redis:alpine
+    container_name: edinet-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  chroma_data:
+  ollama_data:
+  redis_data:

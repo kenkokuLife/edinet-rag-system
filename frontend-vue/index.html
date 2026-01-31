@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDINET RAG System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #1E3A8A;
+            --secondary-color: #3B82F6;
+            --success-color: #10B981;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-top: 30px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            background: var(--primary-color);
+            color: white;
+            padding: 30px;
+            height: 100%;
+        }
+        
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background: var(--secondary-color);
+            color: white;
+            margin-left: auto;
+        }
+        
+        .bot-message {
+            background: #e9ecef;
+            color: #212529;
+        }
+        
+        .source-item {
+            background: white;
+            border-left: 4px solid var(--success-color);
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+        }
+        
+        .btn-primary:hover {
+            background: #1e40af;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .online { background: #10B981; }
+        .offline { background: #EF4444; }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row justify-content-center">
+            <div class="col-12 col-xl-10">
+                <div class="main-container">
+                    <div class="row">
+                        <!-- 侧边栏 -->
+                        <div class="col-md-4 col-lg-3 sidebar">
+                            <div class="text-center mb-5">
+                                <i class="fas fa-file-invoice-dollar fa-3x mb-3"></i>
+                                <h2>EDINET RAG</h2>
+                                <p class="text-light">有価証券報告書分析システム</p>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <h5><i class="fas fa-cog me-2"></i>システム状態</h5>
+                                <div id="system-status">
+                                    <p><span class="status-indicator offline" id="status-indicator"></span>
+                                    <span id="status-text">接続確認中...</span></p>
+                                    <p id="document-count">ドキュメント: 0</p>
+                                    <p id="company-count">会社数: 0</p>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <h5><i class="fas fa-search me-2"></i>検索設定</h5>
+                                <div class="mb-3">
+                                    <label class="form-label text-light">検索数</label>
+                                    <input type="range" class="form-range" id="topK" min="1" max="10" value="5">
+                                    <div class="d-flex justify-content-between">
+                                        <small>1</small>
+                                        <small id="topK-value">5</small>
+                                        <small>10</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <h5><i class="fas fa-bolt me-2"></i>クイックアクション</h5>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-light btn-sm" onclick="searchEdinet()">
+                                        <i class="fas fa-search me-1"></i>EDINET検索
+                                    </button>
+                                    <button class="btn btn-outline-light btn-sm" onclick="clearChat()">
+                                        <i class="fas fa-trash me-1"></i>履歴削除
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-5">
+                                <small class="text-light">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    バージョン: 1.0.0<br>
+                                    データソース: EDINET
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <!-- 主内容区 -->
+                        <div class="col-md-8 col-lg-9 p-4">
+                            <h3 class="mb-4">
+                                <i class="fas fa-comments me-2"></i>チャット検索
+                            </h3>
+                            
+                            <!-- 聊天区域 -->
+                            <div class="chat-container mb-4" id="chat-container">
+                                <div class="text-center text-muted p-5" id="empty-chat">
+                                    <i class="fas fa-comment-dots fa-3x mb-3"></i>
+                                    <p>質問を入力して開始してください</p>
+                                </div>
+                            </div>
+                            
+                            <!-- 输入区域 -->
+                            <div class="mb-3">
+                                <div class="input-group mb-3">
+                                    <input type="text" class="form-control" id="company-filter" 
+                                           placeholder="会社名でフィルター (任意)">
+                                </div>
+                                <div class="input-group mb-3">
+                                    <textarea class="form-control" id="question-input" 
+                                              rows="3" placeholder="質問を入力してください..."></textarea>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="btn-group me-2">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="useExample(0)">
+                                                売上高
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm" onclick="useExample(1)">
+                                                事業リスク
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm" onclick="useExample(2)">
+                                                財務状況
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="sendQuestion()" id="send-btn">
+                                        <i class="fas fa-paper-plane me-2"></i>送信
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- 结果区域 -->
+                            <div id="results-area" class="d-none">
+                                <h5 class="mt-4 mb-3">
+                                    <i class="fas fa-chart-bar me-2"></i>検索結果
+                                </h5>
+                                <div id="sources-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // 配置
+        const API_BASE = 'http://localhost:8000/api/v1';
+        let chatHistory = [];
+        
+        // 示例问题
+        const examples = [
+            "この会社の売上高は？",
+            "主要な事業リスクを教えて",
+            "財務状況の分析は？",
+            "当期純利益の推移は？"
+        ];
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateRangeValue();
+            checkSystemStatus();
+            
+            // 输入框回车发送
+            document.getElementById('question-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendQuestion();
+                }
+            });
+            
+            // 范围滑块事件
+            document.getElementById('topK').addEventListener('input', updateRangeValue);
+        });
+        
+        function updateRangeValue() {
+            const slider = document.getElementById('topK');
+            document.getElementById('topK-value').textContent = slider.value;
+        }
+        
+        function useExample(index) {
+            if (index < examples.length) {
+                document.getElementById('question-input').value = examples[index];
+            }
+        }
+        
+        async function checkSystemStatus() {
+            try {
+                const response = await axios.get(`${API_BASE}/status`);
+                const status = response.data;
+                
+                document.getElementById('status-indicator').className = 'status-indicator online';
+                document.getElementById('status-text').textContent = '接続済み';
+                document.getElementById('document-count').textContent = 
+                    `ドキュメント: ${status.vector_store_stats?.total_chunks || 0}`;
+                
+            } catch (error) {
+                document.getElementById('status-indicator').className = 'status-indicator offline';
+                document.getElementById('status-text').textContent = '未接続';
+                console.error('状態確認エラー:', error);
+            }
+        }
+        
+        async function sendQuestion() {
+            const questionInput = document.getElementById('question-input');
+            const companyFilter = document.getElementById('company-filter');
+            const sendBtn = document.getElementById('send-btn');
+            
+            const question = questionInput.value.trim();
+            if (!question) {
+                alert('質問を入力してください');
+                return;
+            }
+            
+            // 显示用户消息
+            addMessage(question, 'user');
+            
+            // 清空输入框
+            questionInput.value = '';
+            
+            // 禁用发送按钮
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>処理中...';
+            
+            try {
+                const payload = {
+                    question: question
+                };
+                
+                if (companyFilter.value.trim()) {
+                    payload.company_filter = companyFilter.value.trim();
+                }
+                
+                const response = await axios.post(`${API_BASE}/query`, payload, {
+                    timeout: 60000
+                });
+                
+                const result = response.data;
+                
+                // 显示机器人回复
+                addMessage(result.answer, 'bot', result.sources);
+                
+                // 保存到历史
+                chatHistory.push({
+                    question: question,
+                    answer: result.answer,
+                    time: new Date().toLocaleTimeString(),
+                    sources: result.sources
+                });
+                
+                // 显示来源
+                if (result.sources && result.sources.length > 0) {
+                    showSources(result.sources);
+                }
+                
+            } catch (error) {
+                console.error('質問エラー:', error);
+                addMessage('エラーが発生しました。後でもう一度お試しください。', 'bot');
+            } finally {
+                // 恢复发送按钮
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>送信';
+            }
+        }
+        
+        function addMessage(text, sender, sources = null) {
+            const chatContainer = document.getElementById('chat-container');
+            const emptyChat = document.getElementById('empty-chat');
+            
+            // 隐藏空状态
+            if (emptyChat) {
+                emptyChat.style.display = 'none';
+            }
+            
+            // 创建消息元素
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            const time = new Date().toLocaleTimeString();
+            
+            messageDiv.innerHTML = `
+                <div class="fw-bold">${sender === 'user' ? '👤 あなた' : '🤖 RAGシステム'}</div>
+                <div class="mb-2">${text}</div>
+                <div class="small text-muted">${time}</div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            
+            // 滚动到底部
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // 如果有来源，添加来源按钮
+            if (sources && sources.length > 0) {
+                const sourceBtn = document.createElement('button');
+                sourceBtn.className = 'btn btn-sm btn-outline-primary mt-2';
+                sourceBtn.innerHTML = `<i class="fas fa-file-alt me-1"></i>参照元 (${sources.length})`;
+                sourceBtn.onclick = () => showSources(sources);
+                messageDiv.appendChild(sourceBtn);
+            }
+        }
+        
+        function showSources(sources) {
+            const container = document.getElementById('sources-container');
+            const resultsArea = document.getElementById('results-area');
+            
+            // 清空容器
+            container.innerHTML = '';
+            
+            // 添加每个来源
+            sources.forEach((source, index) => {
+                const sourceDiv = document.createElement('div');
+                sourceDiv.className = 'source-item';
+                
+                sourceDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong>参照元 ${index + 1}</strong>
+                            <span class="badge bg-success ms-2">${(source.score * 100).toFixed(1)}% 類似</span>
+                        </div>
+                        <small class="text-muted">${source.company || '不明'}</small>
+                    </div>
+                    <p class="mb-0">${source.text || ''}</p>
+                `;
+                
+                container.appendChild(sourceDiv);
+            });
+            
+            // 显示结果区域
+            resultsArea.classList.remove('d-none');
+        }
+        
+        async function searchEdinet() {
+            try {
+                const response = await axios.get(`${API_BASE}/search/edinet?limit=5`);
+                const result = response.data;
+                
+                alert(`${result.count}件のドキュメントが見つかりました`);
+                
+            } catch (error) {
+                console.error('検索エラー:', error);
+                alert('検索に失敗しました');
+            }
+        }
+        
+        function clearChat() {
+            if (confirm('チャット履歴を削除しますか？')) {
+                const chatContainer = document.getElementById('chat-container');
+                const emptyChat = document.getElementById('empty-chat');
+                
+                // 清空聊天
+                chatContainer.innerHTML = '';
+                
+                // 显示空状态
+                if (emptyChat) {
+                    emptyChat.style.display = 'block';
+                }
+                
+                // 隐藏结果区域
+                document.getElementById('results-area').classList.add('d-none');
+                
+                // 清空历史
+                chatHistory = [];
+                
+                alert('チャット履歴を削除しました');
+            }
+        }
+        
+        // 定时检查系统状态
+        setInterval(checkSystemStatus, 30000);
+    </script>
+</body>
+</html>
