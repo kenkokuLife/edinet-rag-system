@@ -5,6 +5,8 @@ services:
     container_name: edinet-rag-app
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - ENVIRONMENT=production
       - CHROMA_HOST=chromadb

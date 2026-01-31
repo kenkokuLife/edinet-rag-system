@@ -87,15 +87,14 @@ async def process_documents(
             doc_ids = [r["doc_id"] for r in results if r.get("success")]
         
         # 在后台处理文档
-        async def process_in_background():
-            import asyncio
-            results = await document_processor.process_multiple_documents(doc_ids)
-            
-            successful = sum(1 for r in results if r.get("success"))
+        def process_in_background():
+            results = document_processor.process_batch(doc_ids)
+
+            successful = sum(1 for r in results if r.get("status") == "success")
             failed = len(results) - successful
-            
+
             logger.info(f"后台处理完成: {successful}成功, {failed}失败")
-        
+
         background_tasks.add_task(process_in_background)
         
         return DocumentProcessResponse(
@@ -146,28 +145,124 @@ async def get_system_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/documents/{doc_id}/view")
+async def view_document(doc_id: str):
+    """查看文档详情（从EDINET下载并解析）"""
+    try:
+        edinet_client = app_state.get("edinet_client")
+
+        if not edinet_client:
+            raise HTTPException(status_code=503, detail="EDINET客户端未初始化")
+
+        # 下载文档
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = edinet_client.download_document(
+                doc_id=doc_id,
+                save_dir=Path(temp_dir),
+                file_type="1"  # XBRL
+            )
+
+            # 本地API的PDF下载链接
+            pdf_url = f"/api/v1/documents/{doc_id}/pdf"
+
+            if not file_path:
+                return {
+                    "doc_id": doc_id,
+                    "status": "pdf_only",
+                    "pdf_url": pdf_url,
+                    "message": "XBRLファイルが見つかりません。PDFで確認してください。"
+                }
+
+            # 读取XBRL内容
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # 简单解析提取文本内容
+                import re
+                text_content = re.sub(r'<[^>]+>', ' ', content)
+                text_content = re.sub(r'\s+', ' ', text_content).strip()
+
+                return {
+                    "doc_id": doc_id,
+                    "status": "success",
+                    "content_preview": text_content[:5000],
+                    "content_length": len(text_content),
+                    "pdf_url": pdf_url
+                }
+            except Exception as e:
+                return {
+                    "doc_id": doc_id,
+                    "status": "parse_error",
+                    "error": str(e),
+                    "pdf_url": pdf_url
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/documents/{doc_id}/pdf")
+async def download_pdf(doc_id: str):
+    """代理下载PDF文件"""
+    from fastapi.responses import StreamingResponse
+    import requests as req
+
+    try:
+        edinet_client = app_state.get("edinet_client")
+        if not edinet_client:
+            raise HTTPException(status_code=503, detail="EDINET客户端未初始化")
+
+        url = f"{edinet_client.api_url}/v2/documents/{doc_id}"
+        # API Key 在 URL 参数中传递
+        params = {"type": "2"}
+        if edinet_client.api_key:
+            params["Subscription-Key"] = edinet_client.api_key
+
+        response = req.get(url, params=params, stream=True, timeout=120)
+        response.raise_for_status()
+
+        return StreamingResponse(
+            response.iter_content(chunk_size=8192),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={doc_id}.pdf"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/search/edinet")
 async def search_edinet(
-    date: Optional[str] = None,
+    date_from: Optional[str] = Query(None, description="開始日 (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="終了日 (YYYY-MM-DD)"),
     doc_type: str = Query("120", description="文档类型代码"),
-    limit: int = Query(20, ge=1, le=100)
+    company_name: Optional[str] = Query(None, description="会社名（部分一致）"),
+    limit: int = Query(100, ge=1, le=500)
 ):
     """搜索EDINET文档"""
     try:
         edinet_client = app_state.get("edinet_client")
         if not edinet_client:
             raise HTTPException(status_code=503, detail="EDINET客户端未初始化")
-        
+
         documents = edinet_client.search_documents(
-            date=date,
-            doc_type=doc_type
+            date_from=date_from,
+            date_to=date_to,
+            doc_type=doc_type,
+            company_name=company_name
         )
-        
+
         return {
             "count": len(documents),
-            "date": date or "latest",
+            "date_from": date_from,
+            "date_to": date_to,
+            "company_filter": company_name,
             "documents": documents[:limit]
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

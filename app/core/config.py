@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Ollama配置
     ollama_host: str = "localhost"
     ollama_port: int = 11434
-    ollama_model: str = "elyza-japanese-llama-2-7b:latest"
+    ollama_model: str = "qwen2.5:3b"
     
     # 嵌入模型配置 - 添加备用模型
     embedding_model: str = "intfloat/multilingual-e5-large-instruct"
